@@ -17,26 +17,20 @@ execute_process(
     COMMAND_ECHO STDERR
 )
 
-
-set(CMAKE_TOOLCHAIN_FILE ${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake)
+set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake")
 
 include_directories (${VCPKG_ROOT}/installed/x64-windows/include)
 link_directories(${VCPKG_ROOT}/installed/x64-windows/lib)
 link_directories(${VCPKG_ROOT}/installed/x64-windows/bin)
 
-list (APPEND CMAKE_PREFIX_PATH "D:/soft/vcpkg/installed/x64-windows")
+list (APPEND CMAKE_PREFIX_PATH "${VCPKG_ROOT}\\installed\\x64-windows")
 
-#find_package(yaml-cpp CONFIG REQUIRED)
-#find_package(gflags CONFIG REQUIRED)
 find_package(protobuf CONFIG REQUIRED)
 
 find_package(gRPC CONFIG REQUIRED)
 
 include_directories(${gRPC_INCLUDE_DIRS})
 link_directories(${gRPC_LIBRARY_DIRS})
-
-
-# include_directories(${yaml-cpp_INCLUDE_DIRS} ${gflags_INCLUDE_DIRS} ${bsoncxx_INCLUDE_DIRS} ${mongocxx_INCLUDE_DIRS} ${RapidJSON_INCLUDE_DIRS})
 
 file(GLOB_RECURSE PROJECT_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp  ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc)
 file(GLOB_RECURSE PROJECT_HEADER_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h)
@@ -51,4 +45,3 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     protobuf::libprotoc protobuf::libprotobuf protobuf::libprotobuf-lite
 	gRPC::grpc gRPC::grpc++
 )
-

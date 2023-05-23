@@ -1,5 +1,5 @@
-#ifndef __RAFTCPP_RAFTTIMER_HPP__
-#define __RAFTCPP_RAFTTIMER_HPP__
+#ifndef __RAFTCPP_RANDOM_INTERVAL_TIMER_HPP__
+#define __RAFTCPP_RANDOM_INTERVAL_TIMER_HPP__
 
 #include <iostream>
 #include <atomic>
@@ -7,9 +7,9 @@
 #include <chrono>
 #include <random>
 
-class RaftTimer {
+class RandomIntervalTimer {
 public:
-    RaftTimer(int32_t min_wait_ms, int32_t max_wait_ms) : randgen(min_wait_ms, max_wait_ms) {
+    RandomIntervalTimer(int32_t min_wait_ms, int32_t max_wait_ms) : randgen(min_wait_ms, max_wait_ms) {
         started.store(false);
         rst.store(false);
     }
@@ -26,7 +26,7 @@ public:
                 auto wait_ms = std::chrono::milliseconds(randgen(e));
                 auto start = std::chrono::steady_clock::now();
                 while (!st.stop_requested() && !rst.load() && std::chrono::steady_clock::now() - start < wait_ms) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
                 if(st.stop_requested()) {
                     break;

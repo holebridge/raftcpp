@@ -47,11 +47,8 @@ private:
     const std::string& remote_addr_;
 };
 
-static void raft_declare();
-
 class RaftServer final : public RaftService::Service {
 public:
-    friend static void raft_declare();
     static void init(const std::string serve_addr, const std::vector<std::string> members_addr);
     void start();
 

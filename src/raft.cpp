@@ -1,3 +1,9 @@
+#include <filesystem>
+#include <fstream>
+#include <algorithm>
+#include <string>
+#include <iostream>
+
 #include "raft.hpp"
 
 std::string RaftServer::id_;
@@ -7,7 +13,9 @@ RandomIntervalTimer RaftServer::election_timer_(150, 350);
 RandomIntervalTimer RaftServer::heartbeat_timer_(100, 100);
 
 RaftClient::RaftClient(const std::string& member_addr)
-: remote_addr_(member_addr), stub_(RaftService::NewStub(grpc::CreateChannel(member_addr, grpc::InsecureChannelCredentials()))) {}
+: remote_addr_(member_addr), stub_(RaftService::NewStub(grpc::CreateChannel(member_addr, grpc::InsecureChannelCredentials()))) {
+
+}
 
 std::pair<int32_t, bool> RaftClient::RequestVote(const RequestVoteRequest& request) {
     ClientContext context;
@@ -41,15 +49,26 @@ const std::string& RaftClient::remoteAddr() const {
 void RaftServer::init(const std::string serve_addr, const std::vector<std::string> members_addr) {
     RaftServer::id_ = serve_addr;
     RaftServer::state_ = RaftState::Follower;
+
+    std::string folder = serve_addr;
+    std::replace(folder.begin(), folder.end(), ':', '-');
     for(auto& member_addr : members_addr) {
         if(member_addr != serve_addr) {
             RaftServer::clients_to_others_.emplace_back(std::make_unique<RaftClient>(member_addr));
         }
     }
+    if (!std::filesystem::exists(folder)) {
+        if (!std::filesystem::create_directory(folder)) {
+            std::abort();
+        }
+    }
+    
 }
 
 const int RaftServer::currentTerm() const {
-    std::ifstream term_file(this->id_+".term");
+    std::string filename = this->id_;
+    std::replace(filename.begin(), filename.end(), ':', '-');
+    std::ifstream term_file(filename+"/term");
     std::string termstr;
     std::getline(term_file, termstr);
     term_file.close();
@@ -61,20 +80,26 @@ const int RaftServer::currentTerm() const {
 }
 
 void RaftServer::currentTerm(int32_t term) {
-    std::ofstream term_file(this->id_+".term");
+    std::string filename = this->id_;
+    std::replace(filename.begin(), filename.end(), ':', '-');
+    std::ofstream term_file(filename + "/term");
     std::string termstr = std::to_string(term);
     term_file.write(termstr.c_str(), termstr.size());
     term_file.close();
 }
 
 void RaftServer::voteFor(const std::string candidate_id) {
-    std::ofstream votefor_file(this->id_+".votefor");
+    std::string filename = this->id_;
+    std::replace(filename.begin(), filename.end(), ':', '-');
+    std::ofstream votefor_file(filename + "/votefor");
     votefor_file.write(candidate_id.c_str(), candidate_id.size());
     return;
 }
 
 const std::string RaftServer::voteFor() const {
-    std::ifstream votefor_file(this->id_+".votefor");
+    std::string filename = this->id_;
+    std::replace(filename.begin(), filename.end(), ':', '-');
+    std::ifstream votefor_file(filename + "/votefor");
     std::string candidate_id;
     std::getline(votefor_file, candidate_id);
     votefor_file.close();
@@ -86,6 +111,7 @@ void RaftServer::start() {
     {
         if (this->state_ == RaftState::Leader)
         {
+            std::cout << this->id_ << "is leader." << std::endl;
             AppendEntriesRequest request;
             request.set_term(this->currentTerm());
             request.set_leaderid(this->id_);
@@ -101,18 +127,22 @@ void RaftServer::start() {
                 }
             }
         }
+        else {
+            this->heartbeat_timer_.Reset();
+        }
     };
 
     auto start_election = [this]()
     {
         if (this->state_ == RaftState::Leader) {
+            this->election_timer_.Reset();
             return;
         }
         if (this->state_ == RaftState::Follower)
         {
             this->state_ = RaftState::Candidate;
         }
-        this->voteFor("");
+        this->voteFor(this->id_);
         this->currentTerm(this->currentTerm()+1);
 
         int32_t votes = 0;
@@ -127,6 +157,7 @@ void RaftServer::start() {
                 this->voteFor(client->remoteAddr());
                 this->state_ = RaftState::Follower;
                 this->currentTerm(term);
+                break;
             }
             else if (granted)
             {
@@ -147,24 +178,23 @@ void RaftServer::start() {
 }
 
 Status RaftServer::RequestVote(ServerContext *context, const RequestVoteRequest *request, RequestVoteReply *reply) {
+
     if (this->state_ == RaftState::Follower)
     {
-        if (request->term() < this->currentTerm() || this->voteFor() != "")
+        if (request->term() < this->currentTerm())
         {
             reply->set_term(this->currentTerm());
             reply->set_votegranted(false);
-            return Status::OK;
         }
+        else {
+            this->currentTerm(request->term());
+            this->voteFor(request->candidateid());
 
-        this->currentTerm(request->term());
-        this->voteFor(request->candidateid());
+            reply->set_term(request->term());
+            reply->set_votegranted(true);
 
-        reply->set_term(request->term());
-        reply->set_votegranted(true);
-
-        this->election_timer_.Reset();
-
-        return Status::OK;
+            this->election_timer_.Reset();
+        }
     }
     else if (this->state_ == RaftState::Candidate)
     {
@@ -179,26 +209,38 @@ Status RaftServer::RequestVote(ServerContext *context, const RequestVoteRequest 
             reply->set_votegranted(true);
 
             this->election_timer_.Reset();
-            return Status::OK;
         }
-
-        reply->set_term(this->currentTerm());
-        reply->set_votegranted(false);
-
-        return Status::OK;
+        else {
+            reply->set_term(this->currentTerm());
+            reply->set_votegranted(false);
+        }
     }
     else
     {
+        if (request->term() > this->currentTerm()) {
 
-        reply->set_term(this->currentTerm());
-        reply->set_votegranted(false);
+            this->currentTerm(request->term());
+            this->voteFor(request->candidateid());
+            this->state_ = RaftState::Follower;
 
-        return Status::OK;
+            reply->set_term(request->term());
+            reply->set_votegranted(true);
+
+            this->election_timer_.Reset();
+        }
+        {
+            reply->set_term(this->currentTerm());
+            reply->set_votegranted(false);
+        }
     }
+
+    std::cout << this->id_ << ":" << "receive RequestVote from" << request->candidateid() << ", give vote:" << reply->votegranted() << std::endl;
+    return Status::OK;
 }
 Status RaftServer::AppendEntries(ServerContext *context, const AppendEntriesRequest *request, AppendEntriesReply *reply) {
     if (request->entries_size() == 0)
     {
+        std::cout << this->id_ << ":" << "receive heartbeat from" << request->leaderid() << std::endl;
         if (this->state_ == RaftState::Follower || this->state_ == RaftState::Candidate)
         {
             if (request->term() < this->currentTerm())

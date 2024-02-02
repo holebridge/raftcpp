@@ -2,7 +2,6 @@
 #define __HOLEBRIDGE_RAFT_HPP__
 #include <vector>
 #include <memory>
-#include <fstream>
 
 #include <grpcpp/grpcpp.h>
 #include "pb/raftcpp.grpc.pb.h"
@@ -44,7 +43,7 @@ public:
     const std::string& remoteAddr() const;
 private:
 	std::unique_ptr<RaftService::Stub> stub_;
-    const std::string& remote_addr_;
+    const std::string remote_addr_;
 };
 
 class RaftServer final : public RaftService::Service {
